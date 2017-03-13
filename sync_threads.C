@@ -13,79 +13,69 @@ unsigned char sync_threads_start (void) {
     // инициализация пускового семафора потока semSI2 - поток-диспетчер приостановлен
      sem_init(&sem_SI2, 1, 0);
 
-     int err;
-     pthread_attr_t manager_attr;
      pthread_t manager_thread;
-     THREAD_ARG manager_args = {1, MANAGER_PRIORITY};
-     struct sched_param schedparam;  // параметры планирования (приоритет)
+     THREAD_ARG manager_args;
 
-     // инициализация описателя атрибутов потока управления стандартными значениями атрибутов
-     if (err = pthread_attr_init(&manager_attr)) {
-         perror("Attribute creation failed");
-         return 0;
+     // Заполнение структуры параметров потока - диспетчера
+     manager_args.func = &thread_manager;
+     manager_args.isComplete = 1;
+     manager_args.priority = MANAGER_PRIORITY;
+
+     // функция из "родительского" модуля threads_start
+     if (set_thread_attr(&manager_args))
+         return 1;
+
+     if (pthread_create(&manager_thread,
+                                         &(manager_args.attr),
+                                         start_thread,
+                                         (void *) (&manager_args))) {
+        perror("Can't create manager_thread\n");
+        return 1;
+     }
+     printf("Manager of sync threads created.\n");
+
+     if (pthread_attr_destroy(&(manager_args.attr))) {
+        perror("Attribute destruction failed");
+        return 1;
      }
 
-    // установка атрибута "inheritsched" (стратегия планирования и связанные с ней атрибуты не наследуются - берутся из attr)
-
-    if (err = pthread_attr_setinheritsched(&manager_attr, PTHREAD_EXPLICIT_SCHED)) {
-        perror("Setting inheritsched failed");
-        return 0;
-    }
-
-    // установка атрибута "schedpolicy" (создаваемый поток будет иметь стратегию планирования SCHED_FIFO)
-
-    if (err = pthread_attr_setschedpolicy(&manager_attr, SCHED_FIFO)) {
-        perror("Setting scheduling policy failed");
-        return 0;
-    }
-
-    // создаваемый поток будет иметь приоритет, заданный в US_ARG
-    schedparam.sched_priority = manager_args.priority;
-    if (err = pthread_attr_setschedparam(&manager_attr, &schedparam)) {
-        perror("Setting schedparam failed");
-        return 0;
-    }
-
-    if (err = pthread_create(&manager_thread, &manager_attr, &thread_manager, &manager_args)) {
-        perror("Cant create manager_thread\n");
-        return 0;
-    }
-    pthread_attr_destroy(&manager_attr);
-    return 1;
+    return 0;
 }
 
 //****************************************************************************************************************
 // функция-диспетчер циклических потоков
 // при вызове должна создать все потоки и управлять ими
-static void *thread_manager(void *param) {
+void *thread_manager(void *param) {
 
-    unsigned short thread_1_divider = 0;
-    unsigned short thread_2_divider = 0;
-    int err;
+    // Массив "делителей" сигнала используется для вызова всех потоков,
+    // работающих по делителю сигнала СИ2 (всех, кроме 0, он создается всегда)
+    short thread_count[SYNC_THREADS_NUM];
 
-    pthread_attr_t attr;
     pthread_t slave_threads[SYNC_THREADS_NUM];
-    THREAD_ARG slave_args[SYNC_THREADS_NUM] = {
-        {1, MANAGER_PRIORITY - 1},
-        {1, MANAGER_PRIORITY - 2},
-        {1, MANAGER_PRIORITY - 3}
-    };
+    // Массив структур параметров дочерних потоков
+    THREAD_ARG slave_args[SYNC_THREADS_NUM];
 
-    struct sched_param schedparam;  // параметры планирования (приоритет)
+    // Массив указателей на функции дочерних потоков
+    thread_func func_array[SYNC_THREADS_NUM] = {
+        func0,
+        func1,
+        func2
+        };
 
-    // инициализация описателя атрибутов потока управления стандартными значениями атрибутов
-    if (err = pthread_attr_init(&attr))
-        perror("Attribute creation failed");
-
-   // установка атрибута "inheritsched" (стратегия планирования и связанные с ней атрибуты не наследуются - берутся из attr)
-
-   if(err = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED))
-       perror("Setting inheritsched failed");
-
-   // установка атрибута "schedpolicy" (создаваемый поток будет иметь стратегию планирования SCHED_FIFO)
-
-   if(err = pthread_attr_setschedpolicy(&attr, SCHED_FIFO))
-       perror("Setting scheduling policy failed");
+    //заполнение массива структур параметров дочерних потоков
+    for (unsigned short i = 0; i < SYNC_THREADS_NUM; ++i) {
+        // функция потока берется из массива указателей
+        slave_args[i].func = func_array[i];
+        // каждый дочерний поток "завершен" и готов к работе
+        slave_args[i].isComplete = 1;
+         // приоритет каждого из дочерних на 1 меньше предыдущего
+        slave_args[i].priority = MANAGER_PRIORITY - (i + 1);
+        // инициализация атрибутов всех дочерних потоков (ф-ия из модуля threads_start)
+        if (set_thread_attr(&slave_args[i]))
+            return NULL;
+        // при первом запуске создаются все потоки
+        thread_count[i] = 0;
+    }
 
     while (1) {
 
@@ -94,96 +84,77 @@ static void *thread_manager(void *param) {
 
         /* Управление потоками */
 
-        // Поток 0 создается всегда при получении прерывания
-        // если предыдущий такой же поток закончил работу
-        // есть возможность расширения - проверять isComplete с помощью case
-        if (slave_args[0].isComplete) {
-            // создаваемый поток будет иметь приоритет, заданный в THREADS_ARG
-            schedparam.sched_priority = slave_args[0].priority;
-            if (err = pthread_attr_setschedparam(&attr, &schedparam))
-                printf("Setting schedparam of 0 thread failed");
-            if (err = pthread_create(&slave_threads[0], &attr, &func0, (&slave_args[0])))
-                printf("Cant create 0 thread");
-        }
-        else {
-            printf("Thread 0 isnt complete");
-        }
-
-        // Поток 1 создается с помощью счетчика thread_1_divider
-        if (thread_1_divider) {
-            --thread_1_divider;
-        } else {
-            thread_1_divider = Frequency0 / Frequency1 - 1;
-            // если предыдущий такой же поток закончил работу
-            if (slave_args[1].isComplete) {
-                // создаваемый поток будет иметь приоритет, заданный в THREADS_ARG
-                schedparam.sched_priority = slave_args[1].priority;
-                if (err = pthread_attr_setschedparam(&attr, &schedparam))
-                    printf("Setting schedparam of 1 thread failed");
-                if (err = pthread_create(&slave_threads[1], &attr, &func1, (&slave_args[1])))
-                    printf("Cant create 1 thread");
-            }
+        // Управление синхронными потоками осуществляется по принципу "потока на соединение".
+        // Когда поток нужен - он создается (согласно частоте срабатывания)
+        // При получении сигнала СИ2 диспетчер проверяет счетчик каждого потока и сравнивает его с делителем
+        for (unsigned short i = 0; i < SYNC_THREADS_NUM; ++i) {
+            // Если счетчик не 0 - уменьшить счетчик
+            if (thread_count[i])
+                --thread_count[i];
+            // Если 0 - обновить счетчик до значения делителя и создать соответств. поток
+            // (для thread0 делитель всегда 0, т.к. этот поток создается каждый раз при получении СИ2)
             else {
-                printf("Thread 1 isnt complete");
+                thread_count[i] = thread_dividers[i];
+                // если предыдущий такой же поток закончил работу
+                if (slave_args[i].isComplete) {
+                    if (pthread_create(&slave_threads[i],
+                                                        &(slave_args[i].attr),
+                                                        start_thread,
+                                                        (void *) (&slave_args[i]))) {
+                       fprintf(stderr, "Can't create %u thread\n", i);
+                       return NULL;
+                    }
+                }
+                else {
+                    fprintf(stderr, "Thread %u isnt complete", i);
+                }
             }
-        }
+        } // end of for
 
-        // Поток 2 создается с помощью счетчика thread_2_divider
-        if (thread_2_divider) {
-            --thread_2_divider;
-        } else {
-            thread_2_divider = Frequency0 / Frequency2 - 1;
-            // если предыдущий такой же поток закончил работу
-            if (slave_args[2].isComplete) {
-                // создаваемый поток будет иметь приоритет, заданный в THREADS_ARG
-                schedparam.sched_priority = slave_args[2].priority;
-                if (err = pthread_attr_setschedparam(&attr, &schedparam))
-                    printf("Setting schedparam of 2 thread failed");
-                if (err = pthread_create(&slave_threads[2], &attr, &func2, (&slave_args[2])))
-                    printf("Cant create 2 thread");
-            }
-            else {
-                printf("Thread 2 isnt complete");
-            }
-        }
-    }
+    } // end of while
     return NULL;
 }
 
 //****************************************************************************************************************
 // функция потока 0 (1000 Гц)
-static void *func0 (void *param) {
+int func0(void) {
 
-        THREAD_ARG *arg = (THREAD_ARG *) param;
-        arg->isComplete = 0;
+        /* THREAD_ARG *arg = (THREAD_ARG *) param;
+        arg->isComplete = 0; */
+
         // вызов реальной функции
         printf("t0\n");
-        arg->isComplete = 1;
+
+        //arg->isComplete = 1;
         // есть возможность расширения - устанавливать разный код возврата в isComplete
         // для его дальнейшей проверки в диспетчере
-        return NULL;
+        return 0;
 }
 
 //****************************************************************************************************************
 // функция потока 1 (100/200 Гц)
-static void *func1(void *param) {
+int func1(void) {
 
-    THREAD_ARG *arg = (THREAD_ARG *) param;
-    arg->isComplete = 0;
+    /* THREAD_ARG *arg = (THREAD_ARG *) param;
+    arg->isComplete = 0; */
+
     // вызов реальной функции
     printf("t1\n");
-    arg->isComplete = 1;
-    return NULL;
+
+    //arg->isComplete = 1;
+    return 0;
 }
 
 //****************************************************************************************************************
 // функция потока 2 (1/10 Гц)
-static void *func2 (void *param) {
+int func2(void) {
 
-    THREAD_ARG *arg = (THREAD_ARG *) param;
-    arg->isComplete = 0;
+    /*THREAD_ARG *arg = (THREAD_ARG *) param;
+    arg->isComplete = 0; */
+
     // вызов реальной функции
     printf("t2\n");
-    arg->isComplete = 1;
-    return NULL;
+
+    //arg->isComplete = 1;
+    return 0;
 }
