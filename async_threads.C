@@ -3,6 +3,8 @@
 
 #include "async_threads.h"
 
+sem_t sem_ISA;
+
 //*************************************************************************************************
 // функция должна создать асинхронный поток
 // эта функция вводится для "инкапсуляции" всего, что принадлежит асинхронным потокам, в данном модуле
@@ -11,13 +13,18 @@ unsigned char async_threads_start (void) {
 
     // инициализация потока, работающего по сигналу прерывания c шины ISA
     // инициализация пускового семафора потока - поток приостановлен
-     sem_init(&sem_ISA, 1, 0);
+     if (sem_init(&sem_ISA, 1, 0)) {
+         perror("Can't init sem_ISA\n");
+         return 1;
+     }
 
      pthread_t thread;
      THREAD_ARG args = {async_thread, 1, ASYNC_PRIORITY};
 
-     if (set_thread_attr(&args))
+     if (set_thread_attr(&args)) {
+         perror("Setting async thread's attributes failed\n");
          return 1;
+     }
 
      if (pthread_create(&thread,
                                          &(args.attr),
