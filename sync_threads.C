@@ -6,40 +6,33 @@
 sem_t sem_SI2;
 
 //*************************************************************************************************
-// функция должна создать поток - диспетчер для управления синхронными потоками f0, f1, f2
+// функция должна создать поток - диспетчер для управления синхронными потоками f0, f1
 // эта функция вводится для инкапсуляции всего, что принадлежит синхронным потокам, в данном модуле
 
 unsigned char sync_threads_start (void) {
 
     // инициализация потока-диспетчера, работающего по сигналу прерывания СИ2
     // инициализация пускового семафора потока semSI2 - поток-диспетчер приостановлен
-     sem_init(&sem_SI2, 1, 0);
+     if (sem_init(&sem_SI2, 1, 0)) {
+         perror("Can't init sem_SI2");
+         return 1;
+     }
 
-     pthread_t manager_thread;
+     pthread_t manager_thread_id;
+     pthread_attr_t manager_attr;
      THREAD_ARG manager_args;
 
      // Заполнение структуры параметров потока - диспетчера
-     manager_args.func = &thread_manager;
+     strncpy(manager_args.name, "manager_thread", strlen("manager_thread") + 1);
+     manager_args.func = thread_manager;
      manager_args.isComplete = 1;
      manager_args.priority = MANAGER_PRIORITY;
 
-     // функция из "родительского" модуля threads_start
-     if (set_thread_attr(&manager_args))
-         return 1;
-
-     if (pthread_create(&manager_thread,
-                                         &(manager_args.attr),
-                                         start_thread,
-                                         (void *) (&manager_args))) {
-        perror("Can't create manager_thread\n");
-        return 1;
-     }
-     printf("Manager of sync threads created.\n");
-
-     if (pthread_attr_destroy(&(manager_args.attr))) {
-        perror("Attribute destruction failed");
-        return 1;
-     }
+     // функция из "родительского" модуля abstract_thread
+     if (create_thread(&(manager_thread_id),
+                                &(manager_attr),
+                                &(manager_args)))
+             return 1;
 
     return 0;
 }
@@ -47,13 +40,14 @@ unsigned char sync_threads_start (void) {
 //****************************************************************************************************************
 // функция-диспетчер циклических потоков
 // при вызове должна создать все потоки и управлять ими
-void *thread_manager(void *param) {
+int thread_manager (void) {
 
     // Массив "делителей" сигнала используется для вызова всех потоков,
     // работающих по делителю сигнала СИ2 (всех, кроме 0, он создается всегда)
     short thread_count[SYNC_THREADS_NUM];
 
     pthread_t slave_threads[SYNC_THREADS_NUM];
+    pthread_attr_t slave_attrs[SYNC_THREADS_NUM];
     // Массив структур параметров дочерних потоков
     THREAD_ARG slave_args[SYNC_THREADS_NUM];
 
@@ -61,11 +55,12 @@ void *thread_manager(void *param) {
     thread_func func_array[SYNC_THREADS_NUM] = {
         func0,
         func1,
-        func2
+        // func2
         };
 
     //заполнение массива структур параметров дочерних потоков
     for (unsigned short i = 0; i < SYNC_THREADS_NUM; ++i) {
+        strncpy(slave_args[i].name, "sync_thread", strlen("sync_thread") + 1);
         // функция потока берется из массива указателей
         slave_args[i].func = func_array[i];
         // каждый дочерний поток "завершен" и готов к работе
@@ -73,8 +68,10 @@ void *thread_manager(void *param) {
          // приоритет каждого из дочерних на 1 меньше предыдущего
         slave_args[i].priority = MANAGER_PRIORITY - (i + 1);
         // инициализация атрибутов всех дочерних потоков (ф-ия из модуля threads_start)
-        if (set_thread_attr(&slave_args[i]))
-            return NULL;
+        if (set_thread_attr(&slave_attrs[i], slave_args[i].priority)) {
+            printf("Setting %u thread attr failed\n", i);
+            return 1;
+        }
         // при первом запуске создаются все потоки
         thread_count[i] = 0;
     }
@@ -82,7 +79,10 @@ void *thread_manager(void *param) {
     while (1) {
 
         // попытка захвата семафора semSI2 (должен быть выдан обработчиком прерывания SI2)
-        sem_wait(&sem_SI2);
+        if (sem_wait(&sem_SI2)) {
+            perror("sem_SI2 error");
+            return 1;
+        }
 
         /* Управление потоками */
 
@@ -100,21 +100,21 @@ void *thread_manager(void *param) {
                 // если предыдущий такой же поток закончил работу
                 if (slave_args[i].isComplete) {
                     if (pthread_create(&slave_threads[i],
-                                                        &(slave_args[i].attr),
-                                                        start_thread,
-                                                        (void *) (&slave_args[i]))) {
+                                                  &slave_attrs[i],
+                                                  start_thread,
+                                                  (void *) (&slave_args[i]))) {
                        fprintf(stderr, "Can't create %u thread\n", i);
-                       return NULL;
+                       return 1;
                     }
                 }
                 else {
-                    fprintf(stderr, "Thread %u isnt complete", i);
+                    fprintf(stderr, "Thread %u isnt complete\n", i);
                 }
             }
         } // end of for
 
     } // end of while
-    return NULL;
+    return 0;
 }
 
 //****************************************************************************************************************
@@ -148,15 +148,15 @@ int func1(void) {
 }
 
 //****************************************************************************************************************
-// функция потока 2 (1/10 Гц)
-int func2(void) {
+/* функция потока 2 (1/10 Гц)
+static int func2(void) {
 
-    /*THREAD_ARG *arg = (THREAD_ARG *) param;
-    arg->isComplete = 0; */
+    THREAD_ARG *arg = (THREAD_ARG *) param;
+    arg->isComplete = 0;
 
     // вызов реальной функции
     printf("t2\n");
 
     //arg->isComplete = 1;
     return 0;
-}
+} */

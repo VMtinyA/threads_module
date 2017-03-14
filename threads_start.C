@@ -6,11 +6,11 @@
 unsigned char threads_start (void) {
 
     if (async_threads_start()) {
-        perror("Can't create async_thread");
+        printf("Async_thread error\n");
         return 1;
     }
     if (sync_threads_start()) {
-        perror("Can't create sync_threads");
+        printf("Sync_thread error\n");
         return 1;
     }
 
