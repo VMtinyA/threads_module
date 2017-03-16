@@ -1,19 +1,14 @@
 #include "threads_start.h"
 
+pthread_t *sigReceivers;
 //*****************************************************************************
 // Функция, "инкапсулирующая" создание всех потоков в программе,
 // в данной функции вызываются "функции старта" всех групп используемых потоков
-unsigned char threads_start (void) {
+void threads_start (void) {
 
-    if (async_threads_start()) {
-        printf("Async_thread error\n");
-        return 1;
-    }
-    if (sync_threads_start()) {
-        printf("Sync_thread error\n");
-        return 1;
-    }
+    sigReceivers = (pthread_t *) calloc (SigReceiversNum, sizeof (pthread_t));
+    *sigReceivers = async_threads_start();
+    *(sigReceivers + 1) = sync_threads_start();
 
-    return 0;
 }
 

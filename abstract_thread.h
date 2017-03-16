@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_PRIORITY_FIFO           99 // максимальный приоритет при такой стратегии
+#define MAX_PRIORITY_FIFO           99 // максимальный приоритет при стратегии FIFO
 #define FrequencySI2                     1000
 #define FrequencyISA                     1750
 
@@ -32,7 +32,7 @@ typedef int (*thread_func) (void);
 
 /* Параметры потоков управления */
 typedef struct {
-       char name[15];                            // имя потока
+       char name[30];                            // имя потока
        thread_func func;                         // указатель на исполняемую функцию потока
        unsigned char isComplete;          // флаг для проверки завершения потока
        unsigned short priority;               // значение приоритета (1 - 99 для стратегии FIFO)

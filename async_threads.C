@@ -9,37 +9,34 @@ sem_t sem_ISA;
 // функция должна создать асинхронный поток
 // эта функция вводится для "инкапсуляции" всего, что принадлежит асинхронным потокам, в данном модуле
 // должна вызываться в модуле "threads_start"
-unsigned char async_threads_start (void) {
+pthread_t async_threads_start (void) {
 
     // инициализация потока, работающего по сигналу прерывания c шины ISA
     // инициализация пускового семафора потока - поток приостановлен
      if (sem_init(&sem_ISA, 1, 0)) {
          perror("Can't init sem_ISA");
-         return 1;
      }
 
-     pthread_t async_thread_id;
-     pthread_attr_t async_attr;
-     THREAD_ARG async_args;
+     // В программе 1 асинхронный поток - опрашивает ДЛУ по сигналу прерывания по шине ISA
+     pthread_t ISA_thread_id;
+     pthread_attr_t ISA_thread_attr;
+     THREAD_ARG ISA_thread_args;
 
-     strncpy(async_args.name, "async_thread", strlen("async_thread") + 1);
-     async_args.func = async_thread;
-     async_args.isComplete = 1;
-     async_args.priority = ASYNC_PRIORITY;
+     strncpy(ISA_thread_args.name, "ISA_thread", strlen("ISA_thread") + 1);
+     ISA_thread_args.func = ISA_thread;
+     ISA_thread_args.isComplete = 1;
+     ISA_thread_args.priority = ISA_THREAD_PRIORITY;
 
+     create_thread(&(ISA_thread_id), &(ISA_thread_attr), &(ISA_thread_args));
 
-     if (create_thread(&(async_thread_id), &(async_attr), &(async_args)))
-             return 1;
-     return 0;
+     return ISA_thread_id;
 }
 
 //******************************************************************************
 // обертка для вызова реальной функции
 
-int async_thread (void) {
+int ISA_thread (void) {
 
-    /* THREAD_ARG *arg = (THREAD_ARG *) param;
-    arg->isComplete = 0; */
     while (1) {
 
         // попытка захвата семафора
@@ -51,7 +48,6 @@ int async_thread (void) {
         printf("t_async\n");
 
     }
-    //arg->isComplete = 1;
     // есть возможность расширения - устанавливать разный код возврата в isComplete
     // для его дальнейшей проверки
 

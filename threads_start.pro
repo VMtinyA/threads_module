@@ -21,4 +21,5 @@ HEADERS += \
     async_threads.h \
     threads_start.h \
     abstract_thread.h \
-    fake_signal_emitter.h
+    fake_signal_emitter.h \
+    interfaces_main.h

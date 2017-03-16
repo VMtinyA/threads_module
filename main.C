@@ -1,6 +1,4 @@
-#include "threads_start.h"
-#include "fake_signal_emitter.h"
-
+#include "interfaces_main.h"
 
 void SI2_interrupt(void);
 int SI2_count = 0;

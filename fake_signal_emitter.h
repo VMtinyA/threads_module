@@ -33,7 +33,4 @@ extern int SI2_emitter (void);
 // Функция потока, имитирующего сигнал прерывания по шине ISA
 extern int ISA_emitter (void);
 
-
-
-
 #endif // FAKE_SIGNAL_EMITTER_H
