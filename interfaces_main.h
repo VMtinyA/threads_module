@@ -29,9 +29,7 @@
 extern sem_t sem_SI2;
 extern sem_t sem_ISA;
 
-extern pthread_t *sigReceivers;
-
-extern void threads_start(void);
+extern unsigned char threads_start(void);
 
 //*****************************************************************************
 /* Модуль fake_signal_emitter */

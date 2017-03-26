@@ -1,3 +1,9 @@
+/* Модуль содержит:
+ * 1) структуру для работы с потоками;
+ * 2) общие заголовочные файлы для модулей потоков;
+ * 3) функции для создания и конфигурации параметров любых потоков.
+ */
+
 #include "abstract_thread.h"
 
 //*****************************************************************************
@@ -41,12 +47,7 @@ unsigned char set_thread_attr (pthread_attr_t *attr, unsigned short priority) {
 void *start_thread (void *argv) {
 
     THREAD_ARG *arg = (THREAD_ARG *)argv;
-
-    arg->isComplete = 0;
-
     (arg->func)(); /* вызов указанной в аргументах функции */
-
-    arg->isComplete = 1;
 
     return NULL;
 }
@@ -54,17 +55,15 @@ void *start_thread (void *argv) {
 //*****************************************************************************
 // Функция, создающая поток по структуре параметров потока
 // для вызова из "дочерних" модулей
-unsigned char create_thread (pthread_t *thread_id,
-                                                pthread_attr_t *attr,
+unsigned char create_thread (pthread_attr_t *attr,
                                                 THREAD_ARG *arg) {
-    if (arg->isComplete) {
 
         if (set_thread_attr(attr, arg->priority)) {
             fprintf(stderr, "Setting %s attr failed\n", arg->name);
             return 1;
         }
 
-        if (pthread_create(thread_id,
+        if (pthread_create(&(arg->thread_id),
                                       attr,
                                       start_thread,
                                       (void *) (arg))) {
@@ -78,13 +77,7 @@ unsigned char create_thread (pthread_t *thread_id,
            return 1;
         }
 
-    }
-    else {
-        fprintf(stderr, "%s isn't complete", arg->name);
-        return 1;
-    }
-
-    return 0;
+        return 0;
 }
 
 

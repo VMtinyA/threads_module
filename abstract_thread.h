@@ -18,11 +18,11 @@
 #include <sched.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define MAX_PRIORITY_FIFO           99 // максимальный приоритет при стратегии FIFO
-#define FrequencySI2                     1000
-#define FrequencyISA                     1750
+
 
 //************************************************************************************
 /* Параметры потоков и глобальные переменные */
@@ -33,8 +33,8 @@ typedef int (*thread_func) (void);
 /* Параметры потоков управления */
 typedef struct {
        char name[30];                            // имя потока
+       pthread_t thread_id;                    // номер потока
        thread_func func;                         // указатель на исполняемую функцию потока
-       unsigned char isComplete;          // флаг для проверки завершения потока
        unsigned short priority;               // значение приоритета (1 - 99 для стратегии FIFO)
        //struct data;                                // структура для данных,
                                                            // передаваемых в реальную функцию потока
@@ -51,10 +51,8 @@ extern unsigned char set_thread_attr(pthread_attr_t *attr, unsigned short priori
 // вызывает функцию создаваемого потока из THREAD_ARG
 extern void *start_thread (void *argv);
 
-// Функция, создающая поток по структуре параметров потока
+// Функция, создающая поток по структуре параметров потока и его атрибуту
 // для вызова из "дочерних" модулей
-extern unsigned char create_thread (pthread_t *thread_id,
-                                                           pthread_attr_t *attr,
-                                                           THREAD_ARG *arg);
+extern unsigned char create_thread (pthread_attr_t *attr, THREAD_ARG *arg);
 
 #endif // ABSTRACT_THREAD_H
